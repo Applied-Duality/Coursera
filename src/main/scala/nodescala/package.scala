@@ -37,7 +37,7 @@ package object nodescala {
 
     /** Returns a future with a unit value that is completed after time `t`.
      */
-    def delay(t: Duration): Future[Unit] = {
+    def delay(t: Duration): Future[Unit] = Future {
       try {
         Await.result(Future.never, t)
       } catch {

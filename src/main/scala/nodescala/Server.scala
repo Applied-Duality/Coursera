@@ -30,11 +30,12 @@ object Server {
     val server = HttpServer.create(new InetSocketAddress(port), 0)
     server.setExecutor(null)
 
+    // accepter:
     // create a guy that will prepare a unit of work every time a request comes in
     // put all units of work in a dataflow stream
     server.createContext(url, new HttpHandler {
-      def handle(x: HttpExchange) = this.synchronized {
-        log("Request received!")
+      def handle(x: HttpExchange) = if (ct.nonCancelled) this.synchronized {
+        log("request received")
 
         val headers = for ((k, vs) <- x.getRequestHeaders) yield (k, vs.toList)
         val req = immutable.Map() ++ headers
@@ -45,22 +46,29 @@ object Server {
       }
     })
 
-    // traverse the stream and for each work unit start an async response
+    // dispatcher: traverse the stream and for each work unit start an async response
     def traverseRequestStream(reqStreamInitial: Future[Stream[Work]]) {
       var tail = reqStreamInitial
       async {
         while (ct.nonCancelled) {
           val stream = await { tail }
+
+          log("scheduling response")
+
           val work = stream.head
           async { respond(work) }
           tail = stream.tail
         }
+
+        log("stopping server")
         server.stop(0)
       }
     }
 
-    // give a response back, but check if the server was cancelled periodically
+    // responder: give a response back, but check if the server was cancelled periodically
     def respond(work: Work) {
+      log("answering request")
+
       val (req, x) = work
       val resp = handler(req)
       val os = x.getResponseBody()
