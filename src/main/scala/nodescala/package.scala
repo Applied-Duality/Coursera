@@ -46,11 +46,11 @@ package object nodescala {
     }
 
     /** Creates a cancellable context for an execution and runs it.
-     *  
-     *  
+     * 
+     *  Runs a `postAction` after cancellation.
      */
-    def run(f: CancellationToken => Future[Unit]): Subscription = {
-      val cts = CancellationTokenSource()
+    def run(postAction: =>Unit = {})(f: CancellationToken => Future[Unit]): Subscription = {
+      val cts = CancellationTokenSource(postAction)
       f(cts.cancellationToken)
       cts
     }
@@ -108,12 +108,18 @@ package object nodescala {
    */
   object CancellationTokenSource {
     // STUB
-    def apply() = new CancellationTokenSource {
+    def apply(): CancellationTokenSource = apply {}
+
+    // STUB - this one executes work after cancelling
+    def apply(postAction: =>Unit) = new CancellationTokenSource {
       val p = Promise[Unit]()
       val cancellationToken = new CancellationToken {
         def isCancelled = p.future.value != None
       }
-      def unsubscribe() = p.trySuccess(())
+      def unsubscribe() {
+        p.trySuccess(())
+        postAction
+      }
     }
   }
 

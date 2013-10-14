@@ -16,7 +16,7 @@ object Server {
 
   type Req = Map[String, List[String]]
 
-  type Work = (Req, HttpExchange)
+  type Work = Option[(Req, HttpExchange)]
 
   type Resp = Iterator[String]
 
@@ -24,64 +24,71 @@ object Server {
 
   def log(msg: String) = println(msg)
 
-  def apply(port: Int, url: String)(handler: Req => Resp): Subscription = Future.run { ct =>
+  def apply(port: Int, url: String)(handler: Req => Resp): Subscription = {
     var stream = Promise[Stream[Work]]()
 
-    val server = HttpServer.create(new InetSocketAddress(port), 0)
-    server.setExecutor(null)
+    def closeStream() = this.synchronized {
+      log("closing stream")
+      stream.success(Stream[Work](None, Future.never))
+    }
 
-    // accepter:
-    // create a guy that will prepare a unit of work every time a request comes in
-    // put all units of work in a dataflow stream
-    server.createContext(url, new HttpHandler {
-      def handle(x: HttpExchange) = if (ct.nonCancelled) this.synchronized {
-        log("request received")
-
-        val headers = for ((k, vs) <- x.getRequestHeaders) yield (k, vs.toList)
-        val req = immutable.Map() ++ headers
-        val work = (req, x)
-        val tail = Promise[Stream[Work]]()
-        stream.success(Stream[Work](work, tail.future))
-        stream = tail
-      }
-    })
-
-    // dispatcher: traverse the stream and for each work unit start an async response
-    def traverseRequestStream(reqStreamInitial: Future[Stream[Work]]) {
-      var tail = reqStreamInitial
-      async {
-        while (ct.nonCancelled) {
-          val stream = await { tail }
-
-          log("scheduling response")
-
-          val work = stream.head
-          async { respond(work) }
-          tail = stream.tail
+    Future.run { closeStream() } { ct =>
+      val server = HttpServer.create(new InetSocketAddress(port), 0)
+      server.setExecutor(null)
+  
+      // accepter:
+      // create a guy that will prepare a unit of work every time a request comes in
+      // put all units of work in a dataflow stream
+      server.createContext(url, new HttpHandler {
+        def handle(x: HttpExchange) = if (ct.nonCancelled) this.synchronized {
+          log("request received")
+  
+          val headers = for ((k, vs) <- x.getRequestHeaders) yield (k, vs.toList)
+          val req = immutable.Map() ++ headers
+          val work = Some(req, x)
+          val tail = Promise[Stream[Work]]()
+          stream.success(Stream[Work](work, tail.future))
+          stream = tail
         }
-
-        log("stopping server")
-        server.stop(0)
+      })
+  
+      // dispatcher: traverse the stream and for each work unit start an async response
+      def traverseRequestStream(reqStreamInitial: Future[Stream[Work]]) {
+        var tail = reqStreamInitial
+        async {
+          while (ct.nonCancelled) {
+            val stream = await { tail }
+  
+            log("scheduling response, cancelled: " + ct.isCancelled)
+  
+            val work = stream.head
+            if (work.nonEmpty) async { respond(work) }
+            tail = stream.tail
+          }
+  
+          log("stopping server")
+          server.stop(0)
+        }
       }
-    }
-
-    // responder: give a response back, but check if the server was cancelled periodically
-    def respond(work: Work) {
-      log("answering request")
-
-      val (req, x) = work
-      val resp = handler(req)
-      val os = x.getResponseBody()
-      x.sendResponseHeaders(200, 0L)
-      while (ct.nonCancelled && resp.hasNext) {
-        val dataChunk = resp.next()
-        os.write(dataChunk.getBytes())
+  
+      // responder: give a response back, but check if the server was cancelled periodically
+      def respond(work: Work) {
+        log("answering request")
+  
+        val Some((req, x)) = work
+        val resp = handler(req)
+        val os = x.getResponseBody()
+        x.sendResponseHeaders(200, 0L)
+        while (ct.nonCancelled && resp.hasNext) {
+          val dataChunk = resp.next()
+          os.write(dataChunk.getBytes())
+        }
+        os.close()
       }
-      os.close()
+  
+      async { traverseRequestStream(stream.future) }
+      async { server.start() }
     }
-
-    async { traverseRequestStream(stream.future) }
-    async { server.start() }
   }
 
 }

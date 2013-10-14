@@ -17,7 +17,7 @@ object Main {
       Iterator.from(1).map(_ + ", ")
     }
 
-    Future.delay(6 second) andThen {
+    Future.delay(8 second) andThen {
       case _ => subscription.unsubscribe()
     }
 
