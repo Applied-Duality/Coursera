@@ -2,25 +2,22 @@ package nodescala
 
 import java.net.InetSocketAddress
 import com.sun.net.httpserver._
+import nodescala.{Response, Request}
 import scala.collection._
 import scala.collection.JavaConversions._
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 
+
 object Server {
-
-  type Req = Map[String, List[String]]
-
-  type Work = Option[(Req, HttpExchange)]
-
-  type Resp = Iterator[String]
+  type Work = Option[(Request, HttpExchange)]
 
   case class Stream[T](head: T, tail: Future[Stream[T]])
 
   def log(msg: String) = println(msg)
 
-  def apply(port: Int, url: String)(handler: Req => Resp): Subscription = {
+  def apply(port: Int, url: String)(handler: Request => Response): Subscription = {
     var stream = Promise[Stream[Work]]()
 
     def closeStream() = this.synchronized {
@@ -39,8 +36,9 @@ object Server {
         def handle(x: HttpExchange) = if (ct.nonCancelled) this.synchronized {
           log("request received")
   
-          val headers = for ((k, vs) <- x.getRequestHeaders) yield (k, vs.toList)
-          val req = immutable.Map() ++ headers
+          //val headers = for ((k, vs) <- x.getRequestHeaders) yield (k, vs.toList)
+          val req = Request(x)
+          //immutable.Map() ++ headers
           val work = Some(req, x)
           val tail = Promise[Stream[Work]]()
           stream.success(Stream[Work](work, tail.future))
