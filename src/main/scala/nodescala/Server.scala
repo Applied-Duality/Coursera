@@ -1,7 +1,5 @@
 package nodescala
 
-
-
 import java.net.InetSocketAddress
 import com.sun.net.httpserver._
 import scala.collection._
@@ -9,8 +7,6 @@ import scala.collection.JavaConversions._
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
-
-
 
 object Server {
 

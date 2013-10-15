@@ -1,14 +1,10 @@
 package nodescala
 
-
-
 import scala.util._
 import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
-
-
 
 object Main {
 
