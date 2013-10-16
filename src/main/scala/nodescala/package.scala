@@ -45,8 +45,8 @@ package object nodescala {
      * 
      *  Runs a `postAction` after cancellation.
      */
-    def run(postAction: =>Unit = {})(f: CancellationToken => Future[Unit]): Subscription = {
-      val cts = CancellationTokenSource(postAction)
+    def run()(f: CancellationToken => Future[Unit]): Subscription = {
+      val cts = CancellationTokenSource()
       f(cts.cancellationToken)
       cts
     }
@@ -63,7 +63,13 @@ package object nodescala {
      *  Note: This method does not wait for the result.
      *  It is non-blocking and non-deterministic.
      */
-    def result: T = ???
+    def result: T = {
+      try {
+        Await.result(f, 0 nanos)
+      } catch {
+        case t: TimeoutException => throw new NoSuchElementException
+      }
+    }
 
     /** Continues the computation of this future by taking the current future
      *  and mapping it into another future.
@@ -87,6 +93,15 @@ package object nodescala {
     def unsubscribe(): Unit
   }
 
+  object Subscription {
+    def apply(s1: Subscription, s2: Subscription) = new Subscription {
+      def unsubscribe() {
+        s1.unsubscribe()
+        s2.unsubscribe()
+      }
+    }
+  }
+
   /** Used to check if cancellation was requested.
    */
   trait CancellationToken {
@@ -103,18 +118,14 @@ package object nodescala {
   /** Creates cancellation token sources.
    */
   object CancellationTokenSource {
-    // STUB
-    def apply(): CancellationTokenSource = apply {}
-
-    // STUB - this one executes work after cancelling
-    def apply(postAction: =>Unit) = new CancellationTokenSource {
+    // this one executes work after cancelling
+    def apply() = new CancellationTokenSource {
       val p = Promise[Unit]()
       val cancellationToken = new CancellationToken {
         def isCancelled = p.future.value != None
       }
       def unsubscribe() {
         p.trySuccess(())
-        postAction
       }
     }
   }

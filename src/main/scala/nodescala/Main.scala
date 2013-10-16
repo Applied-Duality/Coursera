@@ -1,46 +1,24 @@
 package nodescala
 
-import NodeScala._
-import scala.concurrent._
-import scala.concurrent.duration._
-import ExecutionContext.Implicits.global
-import scala.async.Async.{async, await}
+import nodescala.NodeScala._
 
 object Main {
 
-  def mainOne(args: Array[String]) {
-    val subscription = Server(8191, "/test") { req =>
-      Iterator.from(1).map(_ + ", ")
-    }
-
-    readLine("hit any key to cancel")
-    subscription.unsubscribe()
-    println("bye")
-  }
-
   def main(args: Array[String]) {
-    val listener = HttpListener(8191)
-    val s = listener.start()
-    val cancel = CancellationTokenSource()
-    val token = cancel.cancellationToken
-
-    async {
-      while (!token.isCancelled) {
-        val s = await { listener.getContext("/test") }
-        async {
-          val request = s.request
-          val response = for (i <- (1 to 1000).iterator) yield (i + ", ").toString
-          s.response_=(200, response)
-        }
-      }
-
-      ()
+    // TO IMPLEMENT
+    // 1. instantiate the server at 8191, relative path "/test"
+    val cancel = server(8191, "/test") { request =>
+      for (i <- (1 to 1000).iterator) yield (i + ", ").toString
     }
 
-    readLine("hit any key to cancel")
-    cancel.unsubscribe()
-    s.unsubscribe()
+    // 2. wait until user cancels the server with the "hit ENTER to cancel" message
+    readLine("hit ENTER to cancel")
 
+    // TO IMPLEMENT
+    // 3. unsubscribe from the server
+    cancel.unsubscribe()
+
+    // 4. print a "bye" message
     println("bye")
   }
 
