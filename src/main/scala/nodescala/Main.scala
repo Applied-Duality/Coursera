@@ -1,6 +1,6 @@
 package nodescala
 
-import nodescala._
+import NodeScala._
 import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
@@ -13,11 +13,9 @@ object Main {
       Iterator.from(1).map(_ + ", ")
     }
 
-    Future.delay(8 second) andThen {
-      case _ => subscription.unsubscribe()
-    }
-
-    Thread.sleep(10000)
+    readLine("hit any key to cancel")
+    subscription.unsubscribe()
+    println("bye")
   }
 
   def main(args: Array[String]) {
@@ -25,20 +23,24 @@ object Main {
     val s = listener.start()
     val cancel = CancellationTokenSource()
     val token = cancel.cancellationToken
+
     async {
-      while(!token.isCancelled)
-      {
+      while (!token.isCancelled) {
         val s = await { listener.getContext("/test") }
-        async{
+        async {
           val request = s.request
-          val response = (for{ i <- 1 to 1000} yield i.toString()).iterator
+          val response = for (i <- (1 to 1000).iterator) yield (i + ", ").toString
           s.response_=(200, response)
         }
       }
+
+      ()
     }
+
     readLine("hit any key to cancel")
     cancel.unsubscribe()
     s.unsubscribe()
+
     println("bye")
   }
 

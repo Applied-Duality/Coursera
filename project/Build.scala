@@ -1,10 +1,6 @@
 
-
-
 import sbt._
 import Keys._
-
-
 
 object BuildSettings {
   val buildScalaVersion = "2.10.2"

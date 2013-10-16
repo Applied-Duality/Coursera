@@ -2,20 +2,20 @@ package nodescala
 
 import java.net.InetSocketAddress
 import com.sun.net.httpserver._
-import nodescala.{Response, Request}
+import NodeScala.{Response, Request}
 import scala.collection._
 import scala.collection.JavaConversions._
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 
-
 object Server {
+
   type Work = Option[(Request, HttpExchange)]
 
   case class Stream[T](head: T, tail: Future[Stream[T]])
 
-  def log(msg: String) = println(msg)
+  private def log(msg: String) = println(msg)
 
   def apply(port: Int, url: String)(handler: Request => Response): Subscription = {
     var stream = Promise[Stream[Work]]()

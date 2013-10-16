@@ -4,7 +4,7 @@ import com.sun.net.httpserver._
 import scala.collection._
 import scala.collection.JavaConversions._
 
-package object nodescala {
+object NodeScala {
 
   object Request {
     def apply(exchange: HttpExchange): Request = {
@@ -17,7 +17,7 @@ package object nodescala {
 
     def request: Request = Request(exchange)
 
-    def response_= (statusCode: Int, body: Response)={
+    def response_= (statusCode: Int, body: Response) = {
       val os = exchange.getResponseBody()
       // If the response length parameter is zero,
       // then chunked transfer encoding is used and an arbitrary amount of data may be sent.
@@ -31,7 +31,9 @@ package object nodescala {
   }
 
   type Request = Map[String, List[String]]
+
   type Response = Iterator[String]
+
 }
 
 

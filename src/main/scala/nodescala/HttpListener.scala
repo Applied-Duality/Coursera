@@ -10,8 +10,8 @@ class HttpListener(private val server: HttpServer) {
     val p = Promise[HttpExchange]
     server.createContext(url, new HttpHandler {
       def handle(exchange: HttpExchange): Unit = {
-         server.removeContext(url)
-         p.success(exchange)
+        server.removeContext(url)
+        p.success(exchange)
       }
     })
     p.future
