@@ -36,6 +36,7 @@ package object nodescala {
       }
     }
 
+    // TO IMPLEMENT
     /** Given a list of futures `fs`, returns the future holding the value of the future from `fs` that completed first.
      */
     def any[T](fs: List[Future[T]]): Future[T] = {
@@ -46,6 +47,7 @@ package object nodescala {
       p.future
     }
 
+    // TO IMPLEMENT
     /** Returns a future with a unit value that is completed after time `t`.
      */
     def delay(t: Duration): Future[Unit] = Future {
@@ -56,6 +58,7 @@ package object nodescala {
       }
     }
 
+    // TO IMPLEMENT
     /** Creates a cancellable context for an execution and runs it.
      * 
      *  Runs a `postAction` after cancellation.
@@ -72,6 +75,7 @@ package object nodescala {
    */
   implicit class FutureOps[T](val f: Future[T]) extends AnyVal {
 
+    // TO IMPLEMENT
     /** Returns the result of the future `f` if it is completed.
      *  Otherwise, throws a `NoSuchElementException`.
      *  
@@ -86,6 +90,7 @@ package object nodescala {
       }
     }
 
+    // TO IMPLEMENT
     /** Continues the computation of this future by taking the current future
      *  and mapping it into another future.
      * 
@@ -102,6 +107,7 @@ package object nodescala {
       p.future
     }
 
+    // TO IMPLEMENT
     /** Continues the computation of this future by taking the result
      *  of the current future and mapping it into another future.
      *  
@@ -128,6 +134,11 @@ package object nodescala {
   }
 
   object Subscription {
+    // TO IMPLEMENT
+    /** Given two subscriptions `s1` and `s2` returns a new composite subscription
+     *  such that when the new composite subscription cancells both `s1` and `s2`
+     *  when `unsubscribe` is called.
+     */
     def apply(s1: Subscription, s2: Subscription) = new Subscription {
       def unsubscribe() {
         s1.unsubscribe()
@@ -152,7 +163,9 @@ package object nodescala {
   /** Creates cancellation token sources.
    */
   object CancellationTokenSource {
-    // this one executes work after cancelling
+    // TO IMPLEMENT
+    /** Creates a new `CancellationTokenSource`.
+     */
     def apply() = new CancellationTokenSource {
       val p = Promise[Unit]()
       val cancellationToken = new CancellationToken {
