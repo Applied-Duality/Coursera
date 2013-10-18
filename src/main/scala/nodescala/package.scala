@@ -130,6 +130,15 @@ package object nodescala {
     }
   }
 
+  /** A stream of futures, i.e. a dataflow list.
+   *  Used in the producer-consumer pattern.
+   */
+  case class Stream[T](head: T, tail: Future[Stream[T]])
+
+  object Stream {
+    def sink[T]() = Promise[Stream[T]]()
+  }
+
 }
 
 

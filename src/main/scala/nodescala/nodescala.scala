@@ -22,27 +22,18 @@ object NodeScala {
    */
   type Response = Iterator[String]
 
-  object Request {
-    // TO IMPLEMENT
-    /** Given an `HttpExchange`, constructs a `Request` object.
-     *  See JavaDoc for what `HttpExchange` contains.
-     */
-    def apply(exchange: HttpExchange): Request = {
-      val headers = for ((k, vs) <- exchange.getRequestHeaders) yield (k, vs.toList)
-      immutable.Map() ++ headers
-    }
-  }
-
-  /** Adds additional functionality to `HttpExchange` (see JavaDoc).
+  /** Used to write the response to the request.
    */
-  implicit class HttpExchangeExtensions(val exchange: HttpExchange) extends AnyVal {
-
-    // GIVEN TO STUDENTS AS IS
-    /** Returns the `Request` object for this `HttpExchange`.
+  trait Exchange {
+    /** Writes to the output stream of the exchange.
      */
-    def request: Request = Request(exchange)
+    def write(s: String): Unit
 
-    // TO IMPLEMENT
+    /** Communicates that the response has ended and that there
+     *  will be no further writes.
+     */
+    def close(): Unit
+
     /** Uses the response object to respond to the write the response back.
      *  The response should be written back in parts, and the method should
      *  occasionally check that server was not stopped, otherwise a very long
@@ -51,17 +42,43 @@ object NodeScala {
      *  @param token        the cancellation token for
      *  @param body         the response to write back
      */
-    def respond(token: CancellationToken, body: Response): Unit = {
+    def respond(token: CancellationToken, body: Response): Unit
+
+  }
+
+  object Exchange {
+    def apply(exchange: HttpExchange) = new Exchange {
       val os = exchange.getResponseBody()
 
-      // If the response length parameter is zero,
-      // then chunked transfer encoding is used and an arbitrary amount of data may be sent.
-      exchange.sendResponseHeaders(200, 0L)
-      while (body.hasNext && !token.isCancelled) {
-        val dataChunk = body.next()
-        os.write(dataChunk.getBytes())
+      def write(s: String) = os.write(s.getBytes)
+
+      def close() = os.close()
+
+      // TO IMPLEMENT
+      def respond(token: CancellationToken, body: Response): Unit = {
+        // If the response length parameter is zero,
+        // then chunked transfer encoding is used and an arbitrary amount of data may be sent.
+        exchange.sendResponseHeaders(200, 0L)
+        while (body.hasNext && !token.isCancelled) {
+          val dataChunk = body.next()
+          os.write(dataChunk.getBytes())
+        }
+        os.close()
       }
-      os.close()
+    }
+  }
+
+  /** Adds additional functionality to `HttpExchange` (see JavaDoc).
+   */
+  implicit class HttpExchangeExtensions(val exchange: HttpExchange) extends AnyVal {
+
+    // TO IMPLEMENT
+    /** Constructs a `Request` object from this `HttpExchange`.
+     *  See JavaDoc for what `HttpExchange` contains.
+     */
+    def request: Request = {
+      val headers = for ((k, vs) <- exchange.getRequestHeaders) yield (k, vs.toList)
+      immutable.Map() ++ headers
     }
   }
 
@@ -77,8 +94,11 @@ object NodeScala {
     val cancelListener = listener.start()
     val cancelServer = Future.run() { token =>
       async {
+        var stream = listener.requestStream()
         while (!token.isCancelled) {
-          val (request, xchg) = await { listener.nextRequest() }
+          val Stream(head, tail) = await { stream }
+          val (request, xchg) = head
+          stream = tail
           async {
             xchg.respond(token, handler(request))
           }
