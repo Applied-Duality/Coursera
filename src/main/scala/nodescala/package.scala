@@ -13,21 +13,28 @@ package object nodescala {
    */
   implicit class FutureCompanionOps[T](val f: Future.type) extends AnyVal {
 
+    // TO IMPLEMENT
     /** Returns a future that is always completed with `value`.
      */
-    def apply[T](value: T) = {
+    def always[T](value: T) = {
       val p = Promise[T]()
       p.success(value)
       p.future
     }
 
+    // TO IMPLEMENT
     /** Returns a future that is never completed.
      */
     def never[T]: Future[T] = Promise[T]().future
 
+    // TO IMPLEMENT
     /** Given a list of futures `fs`, returns the future holding the list of values of all the futures from `fs`, in that order.
      */
-    def all[T](fs: List[Future[T]]): Future[List[T]] = ???
+    def all[T](fs: List[Future[T]]): Future[List[T]] = {
+      fs.foldRight(Future.always(List[T]())) { (f, acc) =>
+        for (tail <- acc; head <- f) yield head :: tail
+      }
+    }
 
     /** Given a list of futures `fs`, returns the future holding the value of the future from `fs` that completed first.
      */
@@ -85,7 +92,15 @@ package object nodescala {
      *  The function `f` is called only after the current future completes.
      *  The resulting future contains a value returned by `f`.
      */
-    def continueWith[S](f: Future[T] => S): Future[S] = ???
+    def continueWith[S](cont: Future[T] => S): Future[S] = {
+      val p = Promise[S]()
+
+      f onComplete {
+        case _ => cont(f)
+      }
+
+      p.future
+    }
 
     /** Continues the computation of this future by taking the result
      *  of the current future and mapping it into another future.
@@ -93,7 +108,15 @@ package object nodescala {
      *  The function `f` is called only after the current future completes.
      *  The resulting future contains a value returned by `f`.
      */
-    def continue[S](f: Try[T] => S): Future[S] = ???
+    def continue[S](cont: Try[T] => S): Future[S] = {
+      val p = Promise[S]()
+
+      f onComplete {
+        case t => cont(t)
+      }
+
+      p.future
+    }
 
   }
 
