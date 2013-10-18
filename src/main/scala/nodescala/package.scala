@@ -5,6 +5,8 @@ import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
 import scala.async.Async.{async, await}
 
+/** Contains basic data types, data structures and `Future` extensions.
+ */
 package object nodescala {
 
   /** Adds extensions methods to the `Future` companion object.
@@ -29,7 +31,13 @@ package object nodescala {
 
     /** Given a list of futures `fs`, returns the future holding the value of the future from `fs` that completed first.
      */
-    def any[T](fs: List[Future[T]]): Future[T] = ???
+    def any[T](fs: List[Future[T]]): Future[T] = {
+      val p = Promise[T]()
+      for (f <- fs) f onComplete {
+        case t => p.tryComplete(t)
+      }
+      p.future
+    }
 
     /** Returns a future with a unit value that is completed after time `t`.
      */
@@ -89,6 +97,9 @@ package object nodescala {
 
   }
 
+  /** Subscription objects are used to be able to unsubscribe
+   *  from some event source.
+   */
   trait Subscription {
     def unsubscribe(): Unit
   }
@@ -130,13 +141,46 @@ package object nodescala {
     }
   }
 
-  /** A stream of futures, i.e. a dataflow list.
+  /** A stream of futures, i.e. a dataflow stream.
    *  Used in the producer-consumer pattern.
    */
   case class Stream[T](head: T, tail: Future[Stream[T]])
 
   object Stream {
+    // GIVEN TO STUDENTS AS IS
+    /** Constructs a new empty stream that can be used by the producer.
+     */
     def sink[T]() = Promise[Stream[T]]()
+  }
+
+  /** Adds methods to the stream type.
+   */
+  implicit class StreamOps[T](val stream: Promise[Stream[T]]) extends AnyVal {
+    // TO IMPLEMENT
+    /** Given an uncompleted stream:
+     *  1) constructs the tail of the current stream, which is another uncompleted stream
+     *  2) writes an element `elem` to the head of this stream
+     *  3) returns the uncompleted tail of this stream
+     *  
+     *  A stream:
+     *
+     *      -> ?
+     *
+     *  thus becomes:
+     *
+     *      -> elem -> ?
+     *
+     *  where `?` denotes an uncompleted stream.
+     *
+     *  @param elem       an element to write to the uncompleted stream
+     *  @return           the tail of this stream after this stream has been completed
+     */
+    def <<(elem: T): Promise[Stream[T]] = {
+      val head = elem
+      val tail = Stream.sink[T]
+      stream.success(Stream(head, tail.future))
+      tail
+    }
   }
 
 }

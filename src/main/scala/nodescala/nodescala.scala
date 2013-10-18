@@ -83,9 +83,11 @@ object NodeScala {
   }
 
   // TO IMPLEMENT
-  /** A server first creates and starts an http listener.
-   *  It then creates a cancellation token and as long as the token is not cancelled
-   *  and there is a request from the http listener, asynchronously process that request.
+  /** A server:
+   *  1) creates and starts an http listener
+   *  2) creates a cancellation token (hint: use one of the `Future` companion methods)
+   *  3) as long as the token is not cancelled and there is a request from the http listener
+   *     asynchronously process that request
    *
    *  @return          a subscription that can stop the server and all its asynchronous operations *entirely*.
    */
