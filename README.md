@@ -269,8 +269,8 @@ The method returns a `Subscription` that cancels all asynchronous computations r
 Your task is to implement `server` using `async`/`await` in the following way:
 
 1. create and start an http listener
-2. create a cancellation token to run an asynchronous computation with (hint: use one of the `Future` companion methods)
-3. while the token is not cancelled, await the next request from the listener and then respond to it asynchronously
+2. create a cancellation token to run an asynchronous computation (hint: use one of the `Future` companion methods)
+3. in this asynchronous computation, while the token is not cancelled, await the next request from the listener and then respond to it asynchronously
 4. have the method return a subscription that cancels both the http listener, the server loop
    and any responses that are in progress
    (hint: use one of the `Subscription` companion methods)
