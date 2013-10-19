@@ -97,7 +97,7 @@ package object nodescala {
      *  Note: This method does not wait for the result.
      *  It is thus non-blocking.
      *  However, it is also non-deterministic -- it may throw or return a value
-     *  depending on the state of the `Future`.
+     *  depending on the current state of the `Future`.
      */
     def now: T = {
       try {
@@ -161,9 +161,9 @@ package object nodescala {
   }
 
   object Subscription {
-    // TO IMPLEMENT
+    // GIVEN TO STUDENTS AS IS
     /** Given two subscriptions `s1` and `s2` returns a new composite subscription
-     *  such that when the new composite subscription cancells both `s1` and `s2`
+     *  such that when the new composite subscription cancels both `s1` and `s2`
      *  when `unsubscribe` is called.
      */
     def apply(s1: Subscription, s2: Subscription) = new Subscription {
@@ -181,7 +181,11 @@ package object nodescala {
     def nonCancelled = !isCancelled
   }
 
-  /** A subscription providing cancellation tokens.
+  /** The `CancellationTokenSource` is a special kind of `Subscription` that
+   *  returns a `cancellationToken` which is cancelled by calling `unsubscribe`.
+   *  
+   *  After calling `unsubscribe` once, the associated `cancellationToken` will
+   *  forever remain cancelled -- its `isCancelled` will return `false.
    */
   trait CancellationTokenSource extends Subscription {
     def cancellationToken: CancellationToken

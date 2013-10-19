@@ -65,16 +65,18 @@ Now you can add the following methods to the `Future` companion object:
     /** Given a list of futures `fs`, returns the future holding the list of values of all the futures from `fs`.
      *  The values in the list are in the same order as corresponding futures `fs`.
      *  If any of the futures `fs` fails, the resulting future also fails.
+     *
+     *  E.g.:
+     *
+     *      Future.all(List(Future { 1 }, Future { 2 }, Future { 3 }))
+     *
+     *  returns a single `Future` containing the `List(1, 2, 3)`.
      */
     def all[T](fs: List[Future[T]]): Future[List[T]]
 
     /** Returns a future with a unit value that is completed after time `t`.
      */
     def delay(t: Duration): Future[Unit]
-
-Hint: use whatever tool you see most appropriate for the job when implementing these
-factory methods -- existing future combinators, `for`-comprehensions, `Promise`s or `async`/`await`.
-You may only use `Await.ready` and `Await.result` when defining the `delay` factory method.
 
 In the same way, add the following methods to `Future` objects:
 
@@ -84,7 +86,7 @@ In the same way, add the following methods to `Future` objects:
      *  Note: This method does not wait for the result.
      *  It is thus non-blocking.
      *  However, it is also non-deterministic -- it may throw or return a value
-     *  depending on the state of the `Future`.
+     *  depending on the current state of the `Future`.
      */
     def now: T
 
@@ -104,25 +106,168 @@ In the same way, add the following methods to `Future` objects:
      */
     def continue[S](cont: Try[T] => S): Future[S]
 
+Hint: use whatever tool you see most appropriate for the job when implementing these
+factory methods -- existing future combinators, `for`-comprehensions, `Promise`s or `async`/`await`.
+You may use `Await.ready` and `Await.result` only when defining the `delay` factory method
+and the `now` method on `Future`s.
+
+We will use the factory methods and combinators defined above later in the exercise.
 
 
 ## Adding Cancellation
 
+Standard Scala `Future`s cannot be cancelled.
+Instead, cancelling an asynchronous computation requires a collaborative effort,
+in which the computation that is supposed to be cancelled periodically checks a condition
+for cancellation.
 
-TODO
+In this part of the exercise we will develop support for easier cancellation.
+We introduce the following traits:
 
-    /** Creates a cancellable context for an execution and runs it.
-     */
+    trait CancellationToken {
+      def isCancelled: Boolean
+    }
+
+The `CancellationToken` is an object used by long running asynchronous computation to
+periodically check if the should cancel what they are doing.
+If `isCancelled` returns `true`, then an asynchronous computation should stop.
+
+    trait Subscription {
+      def unsubscribe(): Unit
+    }
+
+`Subscription`s are used to unsubscribe from an event.
+Calling `unsubscribe` means that the `Subscription` owner is no longer
+interested in the asynchronous computation, and that it can stop.
+
+    trait CancellationTokenSource extends Subscription {
+      def cancellationToken: CancellationToken
+    }
+
+The `CancellationTokenSource` is a special kind of `Subscription` that
+returns a `cancellationToken` which is cancelled by calling `unsubscribe`.
+After calling `unsubscribe` once, the associated `cancellationToken` will
+forever remain cancelled.
+
+Your first task is to implement the default `CancellationTokenSource`:
+
+    object CancellationTokenSource {
+      def apply(): CancellationTokenSource = ???
+    }
+
+Hint: use a `Promise` in the above implementation.
+
+We use the above-defined method to implement a method `run` on the `Future` companion object
+that starts an asynchronous computation `f` taking a `CancellationToken` and returns a
+subscription that cancels that `CancellationToken`:
+
     def run()(f: CancellationToken => Future[Unit]): Subscription = {
       val cts = CancellationTokenSource()
       f(cts.cancellationToken)
       cts
     }
 
+Clients can use `Future.run` as follows:
+
+    val working = Future.run() { ct =>
+      async {
+        while (ct.nonCancelled) {
+          println("working")
+        }
+        println("done")
+      }
+    }
+    Future.delay(5 seconds)
+    working.unsubscribe()
+
 
 # Part 2: A Dataflow Stream
 
+A dataflow stream is a `Future`-based data-structure used
+as a building block for producer-consumer patterns.
+It consists of a single recursive data type called `Stream`:
 
+    case class Stream[T](head: T, tail: Future[Stream[T]])
+
+On the producer side a stream always has the type `Promise[Stream[T]]`,
+so that the producer can add values into it.
+The consumer always sees the stream as a `Future[Stream[T]]`,
+and can only read values from it.
+A new dataflow stream is normally created by the producer with the `Stream.sink` method.
+This method merely creates an empty promise of type `Promise[Stream[T]]`.
+
+Here is an example of a producer-consumer pattern using dataflow streams,
+in which the producer produces a stream of natural numbers:
+
+    val stream = Stream.sink[Int]
+
+    // producer
+    async {
+      var producerTail: Promise[Stream[Int]] = stream
+      var i = 0
+      while (true) {
+        val head = await { async { Thread.sleep(1000); i += 1; i } }
+        val tail = Stream.sink[Int]
+        producerTail.success(Stream(head, tail.future))
+        producerTail = tail
+      }
+    }
+
+    // consumer
+    async {
+      var consumerTail: Future[Stream[Int]] = stream.future
+      while (true) {
+        val Stream(head, tail) = await { consumerTail }
+        println(head)
+        consumerTail = tail
+      }
+    }
+
+This is, however, boilerplatey -- we want to write the same example like this:
+
+    // producer
+    async {
+      var producerTail: Promise[Stream[Int]] = stream
+      var i = 0
+      while (true) {
+        val head = await { async { Thread.sleep(1000); i += 1; i } }
+        producerTail = producerTail << head
+      }
+    }
+
+    // consumer
+    async {
+      var consumerTail: Future[Stream[Int]] = stream.future
+      while (true) {
+        val Stream(head, tail) = await { consumerTail }
+        println(head)
+        consumerTail = tail
+      }
+    }
+
+Implement the extension method `<<` on type `Promise[Stream[T]]` that adds
+the element to the uncompleted stream, and returns the uncompleted tail of the
+newly completed stream:
+
+    /** Given an uncompleted stream:
+     *  1) constructs the tail of the current stream, which is another uncompleted stream
+     *  2) writes an element `elem` to the head of this stream
+     *  3) returns the uncompleted tail of this stream
+     *  
+     *  A stream:
+     *
+     *      -> ?
+     *
+     *  thus becomes:
+     *
+     *      -> elem -> ?
+     *
+     *  where `?` denotes an uncompleted stream.
+     *
+     *  @param elem       an element to write to the uncompleted stream
+     *  @return           the tail of this stream after this stream has been completed
+     */
+    def <<(elem: T): Promise[Stream[T]]
 
 
 # Part 3: An Asynchronous NodeJS-style HTTP Server
