@@ -15,8 +15,9 @@ import nodescala.NodeScala._
  *      val futureRequest = listener.nextRequest()
  *
  */
-class HttpListener private (private val server: HttpServer, val relativePath: String) {
+class HttpListener private (val port: Int, val relativePath: String) {
 
+  private val server = HttpServer.create(new InetSocketAddress(port), 0)
   private val executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue)
   server.setExecutor(executor)
     
@@ -75,8 +76,7 @@ object HttpListener {
   /** Creates a new HTTP listener on the given port.
    */
   def apply(port: Int, relativePath: String): HttpListener = {
-    val server = HttpServer.create(new InetSocketAddress(port), 0)
-    new HttpListener(server, relativePath)
+    new HttpListener(port, relativePath)
   }
 
 }

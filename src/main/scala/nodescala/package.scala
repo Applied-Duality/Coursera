@@ -1,5 +1,6 @@
 
 import scala.util._
+import scala.util.control.NonFatal
 import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
@@ -28,7 +29,9 @@ package object nodescala {
     def never[T]: Future[T] = Promise[T]().future
 
     // TO IMPLEMENT
-    /** Given a list of futures `fs`, returns the future holding the list of values of all the futures from `fs`, in that order.
+    /** Given a list of futures `fs`, returns the future holding the list of values of all the futures from `fs`.
+     *  The values in the list are in the same order as corresponding futures `fs`.
+     *  If any of the futures `fs` fails, the resulting future also fails.
      */
     def all[T](fs: List[Future[T]]): Future[List[T]] = {
       fs.foldRight(Future.always(List[T]())) { (f, acc) =>
@@ -38,6 +41,13 @@ package object nodescala {
 
     // TO IMPLEMENT
     /** Given a list of futures `fs`, returns the future holding the value of the future from `fs` that completed first.
+     *  If the first completing future in `fs` fails, then the result is failed as well.
+     *
+     *  E.g.:
+     *
+     *      Future.any(List(Future { 1 }, Future { 2 }, Future { throw new Exception }))
+     *
+     *  may return a `Future` succeeded with `1`, `2` or failed with an `Exception`.
      */
     def any[T](fs: List[Future[T]]): Future[T] = {
       val p = Promise[T]()
@@ -58,10 +68,15 @@ package object nodescala {
       }
     }
 
+    // GIVEN TO STUDENTS AS IS
+    /** Completes this future with user input.
+     */
+    def userInput(message: String): Future[String] = Future {
+      readLine(message)
+    }
+
     // TO IMPLEMENT
     /** Creates a cancellable context for an execution and runs it.
-     * 
-     *  Runs a `postAction` after cancellation.
      */
     def run()(f: CancellationToken => Future[Unit]): Subscription = {
       val cts = CancellationTokenSource()
@@ -76,13 +91,15 @@ package object nodescala {
   implicit class FutureOps[T](val f: Future[T]) extends AnyVal {
 
     // TO IMPLEMENT
-    /** Returns the result of the future `f` if it is completed.
+    /** Returns the result of the future `f` if it is completed now.
      *  Otherwise, throws a `NoSuchElementException`.
      *  
      *  Note: This method does not wait for the result.
-     *  It is non-blocking and non-deterministic.
+     *  It is thus non-blocking.
+     *  However, it is also non-deterministic -- it may throw or return a value
+     *  depending on the state of the `Future`.
      */
-    def result: T = {
+    def now: T = {
       try {
         Await.result(f, 0 nanos)
       } catch {
@@ -101,7 +118,12 @@ package object nodescala {
       val p = Promise[S]()
 
       f onComplete {
-        case _ => cont(f)
+        case _ =>
+          try {
+            p.success(cont(f))
+          } catch {
+            case NonFatal(t) => p.failure(t)
+          }
       }
 
       p.future
@@ -118,7 +140,12 @@ package object nodescala {
       val p = Promise[S]()
 
       f onComplete {
-        case t => cont(t)
+        case t =>
+          try {
+            p.success(cont(t))
+          } catch {
+            case NonFatal(t) => p.failure(t)
+          }
       }
 
       p.future
