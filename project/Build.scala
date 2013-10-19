@@ -18,7 +18,9 @@ object Dependencies {
     "org.scala-lang" % "scala-library" % "2.10.2",
     "org.scala-lang" % "scala-reflect" % "2.10.2"
   )
-  val testDeps = Seq()
+  val testDeps = Seq(
+    "org.scalatest" % "scalatest_2.10" % "1.9.2" % "test"
+  )
   val allDeps = compileDeps ++ testDeps
 }
 
