@@ -1,6 +1,7 @@
 package nodescala
 
 
+import scala.util.{Try, Success, Failure}
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.concurrent.duration._
@@ -79,8 +80,10 @@ class ExampleSpec extends FlatSpec {
 
     val subscription = Future.run() { token =>
       async {
+        var i = 0
         while (token.nonCancelled) {
           // do some work
+          i += 1
         }
 
         done.success(true)
@@ -90,6 +93,48 @@ class ExampleSpec extends FlatSpec {
     subscription.unsubscribe()
 
     assert(Await.result(done.future, 1 second) == true)
+  }
+
+  it should "return the result when completed" in {
+    val completed = Future.always(11)
+
+    assert(completed.now == 11)
+  }
+
+  it should "throw a NoSuchElementException when not completed" in {
+    val notcompleted = Future.never[Int]
+
+    try {
+      notcompleted.now
+    } catch {
+      case e: NoSuchElementException => // ok
+    }
+  }
+
+  it should "be continued" in {
+    val p = Promise[Int]()
+
+    val continued = p.future continueWith {
+      f => f.now * 2
+    }
+
+    p.success(11)
+    assert(Await.result(continued, 1 second) == 22)
+  }
+
+  it should "be continued using its value" in {
+    val p = Promise[Int]()
+
+    val continued = p.future continue {
+      t => t.get * 2
+    }
+
+    p.success(101)
+    assert(Await.result(continued, 1 second) == 202)
+  }
+
+  "CancellationTokenSource" should "allow stopping the computation" in {
+    // TODO
   }
 
 }
