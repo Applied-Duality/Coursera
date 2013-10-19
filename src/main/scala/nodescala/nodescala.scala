@@ -24,7 +24,7 @@ object NodeScala {
 
   /** Used to write the response to the request.
    */
-  trait Exchange {
+  trait Exchange { 
     /** Writes to the output stream of the exchange.
      */
     def write(s: String): Unit
@@ -34,37 +34,16 @@ object NodeScala {
      */
     def close(): Unit
 
-    /** Uses the response object to respond to the write the response back.
-     *  The response should be written back in parts, and the method should
-     *  occasionally check that server was not stopped, otherwise a very long
-     *  response may take very long to finish.
-     *
-     *  @param token        the cancellation token for
-     *  @param body         the response to write back
-     */
-    def respond(token: CancellationToken, body: Response): Unit
-
   }
 
   object Exchange {
     def apply(exchange: HttpExchange) = new Exchange {
       val os = exchange.getResponseBody()
+      exchange.sendResponseHeaders(200, 0L)
 
       def write(s: String) = os.write(s.getBytes)
 
       def close() = os.close()
-
-      // TO IMPLEMENT
-      def respond(token: CancellationToken, body: Response): Unit = {
-        // If the response length parameter is zero,
-        // then chunked transfer encoding is used and an arbitrary amount of data may be sent.
-        exchange.sendResponseHeaders(200, 0L)
-        while (body.hasNext && !token.isCancelled) {
-          val dataChunk = body.next()
-          os.write(dataChunk.getBytes())
-        }
-        os.close()
-      }
     }
   }
 
@@ -72,7 +51,6 @@ object NodeScala {
    */
   implicit class HttpExchangeExtensions(val exchange: HttpExchange) extends AnyVal {
 
-    // TO IMPLEMENT
     /** Constructs a `Request` object from this `HttpExchange`.
      *  See JavaDoc for what `HttpExchange` contains.
      */
@@ -80,6 +58,26 @@ object NodeScala {
       val headers = for ((k, vs) <- exchange.getRequestHeaders) yield (k, vs.toList)
       immutable.Map() ++ headers
     }
+  }
+
+  // TO IMPLEMENT
+  /** Uses the response object to respond to the write the response back.
+   *  The response should be written back in parts, and the method should
+   *  occasionally check that server was not stopped, otherwise a very long
+   *  response may take very long to finish.
+   *
+   *  @param exchange     the exchange used to write the response back
+   *  @param token        the cancellation token for
+   *  @param body         the response to write back
+   */
+  private def respond(exchange: Exchange, token: CancellationToken, response: Response): Unit = {
+    // If the response length parameter is zero,
+    // then chunked transfer encoding is used and an arbitrary amount of data may be sent.
+    while (response.hasNext && !token.isCancelled) {
+      val dataChunk = response.next()
+      exchange.write(dataChunk)
+    }
+    exchange.close()
   }
 
   // TO IMPLEMENT
@@ -96,13 +94,10 @@ object NodeScala {
     val cancelListener = listener.start()
     val cancelServer = Future.run() { token =>
       async {
-        var stream = listener.requestStream()
         while (!token.isCancelled) {
-          val Stream(head, tail) = await { stream }
-          val (request, xchg) = head
-          stream = tail
+          val (request, xchg) = await { listener.nextRequest() }
           async {
-            xchg.respond(token, handler(request))
+            respond(xchg, token, handler(request))
           }
         }
   

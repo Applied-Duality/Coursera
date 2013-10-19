@@ -7,6 +7,7 @@ In this exercise you will implement a simple NodeJS-style asynchronous server us
 # Part 1: Extending Futures
 
 In the first part of the exercise you will extend the Futures and Promises API with some additional methods.
+We will define these methods in the file `package.scala`.
 
 
 ## Extension Methods on `Future`s
@@ -106,12 +107,23 @@ In the same way, add the following methods to `Future` objects:
      */
     def continue[S](cont: Try[T] => S): Future[S]
 
+We will use the factory methods and combinators defined above later in the exercise.
+
 Hint: use whatever tool you see most appropriate for the job when implementing these
 factory methods -- existing future combinators, `for`-comprehensions, `Promise`s or `async`/`await`.
 You may use `Await.ready` and `Await.result` only when defining the `delay` factory method
 and the `now` method on `Future`s.
+All the methods should be non-blocking, while `delay` may asynchronously block its `Future` execution
+until the specified time period elapses.
 
-We will use the factory methods and combinators defined above later in the exercise.
+Hint: whenever you have a long-running computation or blocking make sure to run it inside the `blocking` construct.
+For example:
+
+    blocking {
+      Thread.sleep(1000)
+    }
+
+This ensures that the thread pool does not run out of threads and deadlocks the entire application.
 
 
 ## Adding Cancellation
@@ -181,104 +193,96 @@ Clients can use `Future.run` as follows:
     working.unsubscribe()
 
 
-# Part 2: A Dataflow Stream
 
-A dataflow stream is a `Future`-based data-structure used
-as a building block for producer-consumer patterns.
-It consists of a single recursive data type called `Stream`:
+# Part 2: An Asynchronous NodeJS-style HTTP Server
 
-    case class Stream[T](head: T, tail: Future[Stream[T]])
-
-On the producer side a stream always has the type `Promise[Stream[T]]`,
-so that the producer can add values into it.
-The consumer always sees the stream as a `Future[Stream[T]]`,
-and can only read values from it.
-A new dataflow stream is normally created by the producer with the `Stream.sink` method.
-This method merely creates an empty promise of type `Promise[Stream[T]]`.
-
-Here is an example of a producer-consumer pattern using dataflow streams,
-in which the producer produces a stream of natural numbers:
-
-    val stream = Stream.sink[Int]
-
-    // producer
-    async {
-      var producerTail: Promise[Stream[Int]] = stream
-      var i = 0
-      while (true) {
-        val head = await { async { Thread.sleep(1000); i += 1; i } }
-        val tail = Stream.sink[Int]
-        producerTail.success(Stream(head, tail.future))
-        producerTail = tail
-      }
-    }
-
-    // consumer
-    async {
-      var consumerTail: Future[Stream[Int]] = stream.future
-      while (true) {
-        val Stream(head, tail) = await { consumerTail }
-        println(head)
-        consumerTail = tail
-      }
-    }
-
-This is, however, boilerplatey -- we want to write the same example like this:
-
-    // producer
-    async {
-      var producerTail: Promise[Stream[Int]] = stream
-      var i = 0
-      while (true) {
-        val head = await { async { Thread.sleep(1000); i += 1; i } }
-        producerTail = producerTail << head
-      }
-    }
-
-    // consumer
-    async {
-      var consumerTail: Future[Stream[Int]] = stream.future
-      while (true) {
-        val Stream(head, tail) = await { consumerTail }
-        println(head)
-        consumerTail = tail
-      }
-    }
-
-Implement the extension method `<<` on type `Promise[Stream[T]]` that adds
-the element to the uncompleted stream, and returns the uncompleted tail of the
-newly completed stream:
-
-    /** Given an uncompleted stream:
-     *  1) constructs the tail of the current stream, which is another uncompleted stream
-     *  2) writes an element `elem` to the head of this stream
-     *  3) returns the uncompleted tail of this stream
-     *  
-     *  A stream:
-     *
-     *      -> ?
-     *
-     *  thus becomes:
-     *
-     *      -> elem -> ?
-     *
-     *  where `?` denotes an uncompleted stream.
-     *
-     *  @param elem       an element to write to the uncompleted stream
-     *  @return           the tail of this stream after this stream has been completed
-     */
-    def <<(elem: T): Promise[Stream[T]]
-
-
-# Part 3: An Asynchronous NodeJS-style HTTP Server
+Finally, you have everything you need to write an asynchronous HTTP Server.
+The HTTP server will consist of two components -- the `HttpListener` that translates
+incoming requests into `Future`s and the `server` method.
 
 
 ## The HTTP Listener
 
+The `HttpListener` in file `HttpListener.scala` will do the translation from the event-driven `HttpServer` API to a more `Future`-based API.
+See [the `HttpServer` docs](http://docs.oracle.com/javase/7/docs/jre/api/net/httpserver/spec/com/sun/net/httpserver/HttpServer.html)
+for more info on how it works.
+
+The `HttpListener` is created using the companion object factory method like this:
+
+    val listener = HttpListener(8192, "/myTestUrl")
+
+The above statement creates an `HttpListener` that will wait for incoming HTTP requests
+on port `8192` of the machine with the relative path "/myTestUrl".
+After creating the `HttpListener`, it needs to be started like this:
+
+    val subscription = listener.start()
+
+Starting the `HttpListener` returns a `Subscription` object used to stop the listener later.
+To retrieve the next incoming HTTP request, the `HttpListener` exposes the `nextRequest` method:
+
+    def nextRequest(): Future[(Request, Exchange)]
+
+This method will return a `Future` containing a pair of the `Request`, which is an `immutable.Map`
+with all the HTTP request headers, and an `Exchange` object which can be used to write
+the response back to the HTTP client.
+
+Upon calling the `nextRequest` method, the `HttpListener` creates an empty `Promise` from the result,
+installs a HTTP request handler that will complete the promise with the request and then deregister itself,
+and returns the `Future` of the result `Promise`.
+This pattern in which a callback completes a `Promise` to translate an event into a `Future`
+is ubiquitous in reactive programming with `Future`s.
+
+Your task in this part is to implement the `nextRequest` method.
+
+Hint: make sure you understand how the [`createContext` and `removeContext`](http://docs.oracle.com/javase/7/docs/jre/api/net/httpserver/spec/com/sun/net/httpserver/HttpServer.html#createContext%28java.lang.String,%20com.sun.net.httpserver.HttpHandler%29)
+methods of the `HttpServer` class work.
+
 
 ## The HTTP Server
 
+The HTTP server consists of two main methods `respond` and `server`.
+The `respond` method is used to write the `response` back to the client using an `exchange` object.
+While doing so, this method must periodically check the `token` to see
+if the response should be interrupted early, otherwise our server
+might run forever!
+
+    private def respond(exchange: Exchange, token: CancellationToken, response: Response): Unit
+
+The `Response` is a simple type alias:
+
+    type Response = Iterator[String]
+
+We could have simply encoded the response as a `String`, but responses can potentially be huge
+and even if a huge `Response` fit in memory, we would not be able to cancel the responses
+early if the server were cancelled.
+
+Your first task is to implement the method `respond`.
+
+To start the HTTP server, we declare a single method `server` in file `nodescala.scala`:
+
+    def server(port: Int, relativePath: String)(handler: Request => Response): Subscription
+
+This method starts an asynchronous server on that server HTTP requests on `port` and `relativePath`.
+It takes a `handler` argument to generically map requests into responses -- for each `Request`, the server invokes the `handler` to produce an appropriate `Response`.
+The method returns a `Subscription` that cancels all asynchronous computations related to this server.
+
+Your task is to implement `server` using `async`/`await` in the following way:
+
+1. create and start an http listener
+2. create a cancellation token to run an asynchronous computation with (hint: use one of the `Future` companion methods)
+3. while the token is not cancelled, await the next request from the listener and then respond to it asynchronously
+4. have the method return a subscription that cancels both the http listener, the server loop
+   and any responses that are in progress
+   (hint: use one of the `Subscription` companion methods)
 
 ## Instantiating the Server
 
+Finally, you can instantiate the server in the file `Main.scala`:
 
+1. Create a server on port `8191` and relative path `/test` with a subscription `myServer`
+2. Create a `userInterrupted` future that is completed when the user presses `ENTER`, continued with a message `"You entered... "`
+3. Create a `timeOut` future that is completed after 20 seconds, continued with a message `"Server timeout!"`
+4. Create a `terminationRequested` future that is completed once any of the two futures above complete
+5. Once the `terminationRequested` completes, print its message, unsubscribe from `myServer` and print `"Bye!"`
+
+Hint: where possible, use the previously defined `Future` factory methods and combinators.

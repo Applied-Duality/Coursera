@@ -62,7 +62,9 @@ package object nodescala {
      */
     def delay(t: Duration): Future[Unit] = Future {
       try {
-        Await.result(Future.never, t)
+        blocking {
+          Await.result(Future.never, t)
+        }
       } catch {
         case _: Exception => Future { () }
       }
@@ -205,48 +207,6 @@ package object nodescala {
       def unsubscribe() {
         p.trySuccess(())
       }
-    }
-  }
-
-  /** A stream of futures, i.e. a dataflow stream.
-   *  Used in the producer-consumer pattern.
-   */
-  case class Stream[T](head: T, tail: Future[Stream[T]])
-
-  object Stream {
-    // GIVEN TO STUDENTS AS IS
-    /** Constructs a new empty stream that can be used by the producer.
-     */
-    def sink[T]() = Promise[Stream[T]]()
-  }
-
-  /** Adds methods to the stream type.
-   */
-  implicit class StreamOps[T](val stream: Promise[Stream[T]]) extends AnyVal {
-    // TO IMPLEMENT
-    /** Given an uncompleted stream:
-     *  1) constructs the tail of the current stream, which is another uncompleted stream
-     *  2) writes an element `elem` to the head of this stream
-     *  3) returns the uncompleted tail of this stream
-     *  
-     *  A stream:
-     *
-     *      -> ?
-     *
-     *  thus becomes:
-     *
-     *      -> elem -> ?
-     *
-     *  where `?` denotes an uncompleted stream.
-     *
-     *  @param elem       an element to write to the uncompleted stream
-     *  @return           the tail of this stream after this stream has been completed
-     */
-    def <<(elem: T): Promise[Stream[T]] = {
-      val head = elem
-      val tail = Stream.sink[T]
-      stream.success(Stream(head, tail.future))
-      tail
     }
   }
 

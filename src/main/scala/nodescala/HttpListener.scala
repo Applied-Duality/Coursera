@@ -23,34 +23,31 @@ class HttpListener private (val port: Int, val relativePath: String) {
     
   // TO IMPLEMENT
   /** Given a relative path:
-   *  1) constructs an uncompleted dataflow stream
+   *  1) constructs an uncompleted promise
    *  2) installs an asynchronous `HttpHandler` to the `server`
-   *     that adds elements to the dataflow stream each time its
-   *     `handle` method is invoked
-   *  3) returns the **head** of the request stream
+   *     that completes the promise with a request when `handle` method is invoked,
+   *     and then deregisters itself
+   *  3) returns the future with the request
    *
    *  Note: the `handle` method of the `HttpHandler` is never called concurrently,
    *        and is always called from the same thread.
    *
    *  @param relativePath    the relative path on which we want to listen to requests
-   *  @return                the stream holding the pairs of a request and exchange objects
+   *  @return                the promise holding the pair of a request and an exchange object
    */
-  def requestStream(): Future[Stream[(Request, Exchange)]] = {
-    // GIVEN TO STUDENTS AS IS
-    var stream = Stream.sink[(Request, Exchange)]
-    // TO IMPLEMENT
-    val initialStream = stream.future
+  def nextRequest(): Future[(Request, Exchange)] = {
+    val p = Promise[(Request, Exchange)]()
 
     server.createContext(relativePath, new HttpHandler {
       def handle(httpxchg: HttpExchange): Unit = {
         val req = httpxchg.request
         val xchg = Exchange(httpxchg)
-        val head = (req, xchg)
-        stream = stream << head
+        server.removeContext(relativePath)
+        p.success((req, xchg))
       }
     })
 
-    initialStream
+    p.future
   }
 
   // GIVEN TO STUDENTS AS IS
