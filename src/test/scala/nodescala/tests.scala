@@ -2,11 +2,13 @@ package nodescala
 
 
 import scala.util.{Try, Success, Failure}
+import scala.collection._
 import scala.concurrent._
 import ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.async.Async.{async, await}
 import org.scalatest._
+import NodeScala._
 
 
 
@@ -23,6 +25,7 @@ class ExampleSpec extends FlatSpec {
 
     try {
       Await.result(never, 1 second)
+      assert(false)
     } catch {
       case t: TimeoutException => // ok!
     }
@@ -53,6 +56,7 @@ class ExampleSpec extends FlatSpec {
 
     try {
       Await.result(any, 1 second)
+      assert(false)
     } catch {
       case e: IllegalStateException => // ok
     }
@@ -70,6 +74,7 @@ class ExampleSpec extends FlatSpec {
 
     try {
       Await.result(delayed, 1 second)
+      assert(false)
     } catch {
       case t: TimeoutException => // ok!
     }
@@ -106,6 +111,7 @@ class ExampleSpec extends FlatSpec {
 
     try {
       notcompleted.now
+      assert(false)
     } catch {
       case e: NoSuchElementException => // ok
     }
@@ -134,7 +140,142 @@ class ExampleSpec extends FlatSpec {
   }
 
   "CancellationTokenSource" should "allow stopping the computation" in {
-    // TODO
+    val cts = CancellationTokenSource()
+    val ct = cts.cancellationToken
+    val p = Promise[String]()
+
+    async {
+      while (ct.nonCancelled) {
+        // do work
+      }
+
+      p.success("done")
+    }
+
+    cts.unsubscribe()
+    assert(Await.result(p.future, 1 second) == "done")
+  }
+
+  class DummyExchange(val request: Request) extends Exchange {
+    @volatile var response = ""
+    val loaded = Promise[String]()
+    def write(s: String) {
+      response += s
+    }
+    def close() {
+      loaded.success(response)
+    }
+  }
+
+  class DummyServerImplementation extends HttpListener.ServerImplementation {
+    private var started = false
+    private val handlers = mutable.Map[String, Exchange => Unit]()
+
+    def start() = this.synchronized {
+      started = true
+    }
+
+    def stop() = this.synchronized {
+      started = false
+    }
+
+    def createContext(relativePath: String, handler: Exchange => Unit) = this.synchronized {
+      assert(started)
+
+      handlers(relativePath) = handler
+    }
+
+    def removeContext(relativePath: String) = this.synchronized {
+      assert(started)
+
+      handlers.remove(relativePath)
+    }
+
+    def emit(relativePath: String, req: Request) = this.synchronized {
+      val exchange = new DummyExchange(req)
+      val h = handlers(relativePath)
+      h(exchange)
+      exchange
+    }
+  }
+
+  "HttpListener" should "serve the next request as a future" in {
+    val dummyImpl = new DummyServerImplementation
+    val listener = HttpListener(8191, "/test", p => dummyImpl)
+    val subscription = listener.start()
+
+    def test(req: Request) {
+      val f = listener.nextRequest()
+      dummyImpl.emit("/test", req)
+      val (reqReturned, xchg) = Await.result(f, 1 second)
+
+      assert(reqReturned == req)
+    }
+
+    test(immutable.Map("StrangeHeader" -> List("StrangeValue1")))
+    test(immutable.Map("StrangeHeader" -> List("StrangeValue2")))
+
+    subscription.unsubscribe()
+  }
+
+  it should "not work if not previously started" in {
+    val listener = HttpListener(8191, "/test", p => new DummyServerImplementation)
+
+    try {
+      listener.nextRequest()
+      assert(false)
+    } catch {
+      case e: Exception => // ok
+    }
+  }
+
+  "Server" should "serve requests" in {
+    val dummyImpl = new DummyServerImplementation
+    val myServer = server(8191, "/testDir", (port, relPath) => HttpListener(port, relPath, p => dummyImpl)) {
+      request => for (kv <- request.iterator) yield (kv + "\n").toString
+    }
+
+    // wait until server is really installed
+    Thread.sleep(500)
+
+    def test(req: Request) {
+      val webpage = dummyImpl.emit("/testDir", req)
+      val content = Await.result(webpage.loaded.future, 1 second)
+      val expected = (for (kv <- req.iterator) yield (kv + "\n").toString).mkString
+      assert(content == expected, s"'$content' vs. '$expected'")
+    }
+
+    test(immutable.Map("StrangeRequest" -> List("Does it work?")))
+    test(immutable.Map("StrangeRequest" -> List("It works!")))
+    test(immutable.Map("WorksForThree" -> List("Always works. Trust me.")))
+
+    myServer.unsubscribe()
+  }
+
+  it should "cancel a long-running response" in {
+    val dummyImpl = new DummyServerImplementation
+    val myServer = server(8191, "/testDir", (port, relPath) => HttpListener(port, relPath, p => dummyImpl)) {
+      request => Iterator.from(1).map(_.toString)
+    }
+
+    // wait until the server is installed
+    Thread.sleep(500)
+
+    val webpage = dummyImpl.emit("/testDir", immutable.Map())
+
+    // let some work be done
+    Thread.sleep(200)
+
+    myServer.unsubscribe()
+
+    // give him some time to unsubscribe
+    Thread.sleep(500)
+
+    webpage.loaded.future.now
   }
 
 }
+
+
+
+

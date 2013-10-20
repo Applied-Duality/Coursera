@@ -66,7 +66,7 @@ package object nodescala {
           Await.result(Future.never, t)
         }
       } catch {
-        case _: Exception => Future { () }
+        case _: Exception =>
       }
     }
 

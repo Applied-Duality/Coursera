@@ -34,6 +34,8 @@ object NodeScala {
      */
     def close(): Unit
 
+    def request: Request
+
   }
 
   object Exchange {
@@ -44,19 +46,11 @@ object NodeScala {
       def write(s: String) = os.write(s.getBytes)
 
       def close() = os.close()
-    }
-  }
 
-  /** Adds additional functionality to `HttpExchange` (see JavaDoc).
-   */
-  implicit class HttpExchangeExtensions(val exchange: HttpExchange) extends AnyVal {
-
-    /** Constructs a `Request` object from this `HttpExchange`.
-     *  See JavaDoc for what `HttpExchange` contains.
-     */
-    def request: Request = {
-      val headers = for ((k, vs) <- exchange.getRequestHeaders) yield (k, vs.toList)
-      immutable.Map() ++ headers
+      def request: Request = {
+        val headers = for ((k, vs) <- exchange.getRequestHeaders) yield (k, vs.toList)
+        immutable.Map() ++ headers
+      }
     }
   }
 
@@ -89,8 +83,12 @@ object NodeScala {
    *
    *  @return          a subscription that can stop the server and all its asynchronous operations *entirely*.
    */
-  def server(port: Int, relativePath: String)(handler: Request => Response): Subscription = {
-    val listener = HttpListener(port, relativePath)
+  def server(
+    port: Int,
+    relativePath: String,
+    listenerFactory: (Int, String) => HttpListener = (port, path) => HttpListener.apply(port, path)
+  )(handler: Request => Response): Subscription = {
+    val listener = listenerFactory(port, relativePath)
     val cancelListener = listener.start()
     val cancelServer = Future.run() { token =>
       async {

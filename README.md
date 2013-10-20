@@ -260,18 +260,23 @@ Your first task is to implement the method `respond`.
 
 To start the HTTP server, we declare a single method `server` in file `nodescala.scala`:
 
-    def server(port: Int, relativePath: String)(handler: Request => Response): Subscription
+    def server(
+      port: Int,
+      relativePath: String,
+      listenerFactory: (Int, String) => HttpListener = (port, path) => HttpListener.apply(port, path)
+    )(handler: Request => Response): Subscription
 
 This method starts an asynchronous server on that server HTTP requests on `port` and `relativePath`.
-It takes a `handler` argument to generically map requests into responses -- for each `Request`, the server invokes the `handler` to produce an appropriate `Response`.
-The method returns a `Subscription` that cancels all asynchronous computations related to this server.
+The `listenerFactory` argument is a function that creates the listener, and you should always use the default value when calling `server` -- you will typically use a non-default argument here only in your unit tests.
+The `server` method also takes a `handler` argument to generically map requests into responses -- for each `Request`, the server invokes the `handler` to produce an appropriate `Response`.
+It returns a `Subscription` that cancels all asynchronous computations related to this server.
 
 Your task is to implement `server` using `async`/`await` in the following way:
 
 1. create and start an http listener
 2. create a cancellation token to run an asynchronous computation (hint: use one of the `Future` companion methods)
 3. in this asynchronous computation, while the token is not cancelled, await the next request from the listener and then respond to it asynchronously
-4. have the method return a subscription that cancels both the http listener, the server loop
+4. have the method `server` return a subscription that cancels the http listener, the server loop
    and any responses that are in progress
    (hint: use one of the `Subscription` companion methods)
 
