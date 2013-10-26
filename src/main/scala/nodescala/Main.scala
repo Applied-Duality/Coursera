@@ -3,7 +3,6 @@ package nodescala
 import scala.concurrent._
 import scala.concurrent.duration._
 import ExecutionContext.Implicits.global
-import scala.async.Async.{async, await}
 
 object Main {
 
@@ -12,7 +11,7 @@ object Main {
     // 1. instantiate the server at 8191, relative path "/test",
     //    and have the response return headers of the request
     val myServer = NodeScala.server(8191, "/test") { request =>
-      for (kv <- request.iterator) yield (kv + "\n").toString
+      for (kv <- request.iterator) yield (kv + "\n")
     }
 
     // TO IMPLEMENT

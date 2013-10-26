@@ -1,10 +1,9 @@
 package nodescala
 
-import java.util.concurrent.{Executor, ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue}
+import java.util.concurrent.{ThreadPoolExecutor, TimeUnit, LinkedBlockingQueue}
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import java.net.InetSocketAddress
 import scala.concurrent._
-import ExecutionContext.Implicits.global
 import nodescala.NodeScala._
 
 /** Used to obtain http requests on a certain port and a certain relative path.
